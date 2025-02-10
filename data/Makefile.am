@@ -16,7 +16,7 @@ if WITH_LINTHURBER_LARGEDATA_DIR
 else
 	mkdir -p ${prefix}/data
 	cp ./config ${prefix}/data
-	cp -R ./cvlsu ${prefix}/data
+	cp -R ./linthurber ${prefix}/data
 	chmod og+r ${prefix}/data/config
 	chmod -R og+r ${prefix}/data/linthurber
 	chmod og+x ${prefix}/data/linthurber

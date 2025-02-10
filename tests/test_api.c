@@ -1,5 +1,5 @@
 /**
- * @file test.c
+ * @file test_api.c
  * @brief Bootstraps the test framework for the LINTHURBER library.
  * @author - SCEC
  * @version 1.0

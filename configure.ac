@@ -2,7 +2,7 @@
 
 AC_INIT(linthurber, 1.0.1)
 AC_CONFIG_AUX_DIR([./aux-config])
-AM_INIT_AUTOMAKE()
+AM_INIT_AUTOMAKE([foreign])
 AC_PROG_RANLIB
 AC_PROG_MKDIR_P
 AC_PROG_LN_S

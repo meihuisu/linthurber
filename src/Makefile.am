@@ -1,7 +1,7 @@
 # Autoconf/automake file
 
 # General compiler/linker flags
-AM_CFLAGS = ${CFLAGS}
+AM_CFLAGS = ${CFLAGS} -I${UCVM_SRC_PATH}/src/ucvm
 AM_LDFLAGS = ${LDFLAGS}
 
 TARGETS = liblinthurber.a liblinthurber.so

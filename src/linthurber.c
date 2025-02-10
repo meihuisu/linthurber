@@ -10,6 +10,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <math.h>
+#include <limits.h>
 
 #include "ucvm_utils.h"
 #include "ucvm_config.h"
@@ -103,18 +104,14 @@ int linthurber_query(linthurber_point_t *points, linthurber_properties_t *data, 
     linthurber_configuration_t *config=linthurber_configuration;
     linthurber_model_t *model=linthurber_velocity_model;
     
-
     int k, p;
     double x, y, z, depth_msl, depth_ratio;
 
     /* Query model */
     ucvm_point_t geo;      
     ucvm_point_t xy;
-    for (p = 0; p < n; p++) {
-
-        ucvm_point_t geo;
-        ucvm_point_t xy;
-  
+    ucvm_bilinear_t linthurber_proj;
+    for (p = 0; p < numpoints; p++) {
         geo.coord[0]= points[p].longitude;
         geo.coord[1]= points[p].latitude;
 
@@ -122,74 +119,64 @@ int linthurber_query(linthurber_point_t *points, linthurber_properties_t *data, 
         data[p].vs = -1.0;
         data[p].rho = -1.0;
 
-	XXXX
         if (ucvm_bilinear_geo2xy(&linthurber_proj, &geo, &xy) == 0) {
 
           if (LINTHURBER_USE_DEM) {
 
-         /* DEM elevation value */
-         if (_linthurber_getval(x/config->dem_spacing,
-                         y/config->dem_spacing,
+              /* DEM elevation value */
+              if (_linthurber_getval(x/config->spacing_dem,
+                         y/config->spacing_dem,
                          0.0, LINTHURBER_DEM, 
-                         &depth_msl) != UCVM_CODE_SUCCESS) { continue; }
+                         &depth_msl) != SUCCESS) { continue; }
 
-          depth_msl = (points[p].depth - depth_msl)/1000.0;
-          for (k = 0; k < config->num_z; k++) {
-             if (config->depths_msl[k] >= depth_msl) { break; }
-          }
+              depth_msl = (points[p].depth - depth_msl)/1000.0;
+              for (k = 0; k < config->num_z; k++) {
+                 if (config->depths_msl[k] >= depth_msl) { break; }
+              }
 
-          if (k == config->num_z) {
-             k = config->num_z - 1;
-             depth_ratio = 0.0;
-             z = k;
-             } else if (k == 0) {
-                depth_ratio = 0.0;
-                z = k;
-                } else {
-                    depth_ratio = (depth_msl - config->depths_msl[k-1]) /
-                              (config->depths_msl[k] - config->depths_msl[k-1]); 
-                    z = (k-1) + depth_ratio;
-           }
+              if (k == config->num_z) {
+                 k = config->num_z - 1;
+                 depth_ratio = 0.0;
+                 z = k;
+                 } else if (k == 0) {
+                    depth_ratio = 0.0;
+                    z = k;
+                    } else {
+                        depth_ratio = (depth_msl - config->depths_msl[k-1]) /
+                                  (config->depths_msl[k] - config->depths_msl[k-1]); 
+                        z = (k-1) + depth_ratio;
+               }
        
-           /* Vp value */
-       _linthurber_getval(x / config->vp_spacing,
-                     y / config->vp_spacing,
-                     z, LINTHURBER_VP, &(data[p].vp));
+               /* Vp value */
+               _linthurber_getval(x / config->spacing_vp,
+                              y / config->spacing_vp, z, LINTHURBER_VP, &(data[p].vp));
        
-       /* Vs value */
-       _linthurber_getval(x / config->vs_spacing,
-                     y / config->vs_spacing,
-                     z, LINTHURBER_VS, &(data[p].vs));
-      } else {
-
-          depth_msl = point[p].depth/1000.0;
-          for (k = 0; k < config->num_z; k++) {
-            if (config->depths_msl[k] >= depth_msl) {
-              break;
-            }
-          }
-          if (k == config->num_z) {
-            k = config->num_z - 1;
-          }
-          z = k;
+              /* Vs value */
+               _linthurber_getval(x / config->spacing_vs,
+                              y / config->spacing_vs, z, LINTHURBER_VS, &(data[p].vs));
+              } else {
+    
+                  depth_msl = points[p].depth/1000.0;
+                  for (k = 0; k < config->num_z; k++) {
+                      if (config->depths_msl[k] >= depth_msl) { break; }
+                  }
+                  if (k == config->num_z) { k = config->num_z - 1; }
+                  z = k;
    
-          /* Vp value */
-          _linthurber_getval(x / config->vp_spacing,
-                        y / config->vp_spacing,
-                        z, LINTHURBER_VP, &(data[p].vp));
-          
-          /* Vs value */
-          _linthurber_getval(x / config->vs_spacing,
-                        y / config->vs_spacing,
-                        z, LINTHURBER_VS, &(data[p].vs));
-     }
+                  /* Vp value */
+                  _linthurber_getval(x / config->spacing_vp,
+                            y / config->spacing_vp, z, LINTHURBER_VP, &(data[p].vp));
+              
+                  /* Vs value */
+                  _linthurber_getval(x / config->spacing_vs,
+                            y / config->spacing_vs, z, LINTHURBER_VS, &(data[p].vs));
+          }
 
-     /* Calculate density */
-     if (data[p].vp > 0.0) {
-       data[p].rho = _get_rho(data[p].vp);
-     }
-    }
-    return(UCVM_CODE_SUCCESS);
+         /* Calculate density */
+         if (data[p].vp > 0.0) { data[p].rho = _get_rho(data[p].vp); }
+       }
+    } // for loop
+    return(SUCCESS);
 }
 
 
@@ -237,7 +224,7 @@ int _linthurber_getval(double i, double j, double k, int prop,
   if ((a < 0) || (b < 0) || (c < 0) || 
       (a >= dims[0]) || (b >= dims[1]) || (c >= dims[2])) {
     //fprintf(stderr, "a,b,c = %d, %d, %d\n", a, b, c);
-    return(UCVM_CODE_ERROR);
+    return(FAIL);
   }
 
   /* Values at corners of interpolation cube */
@@ -281,9 +268,9 @@ int _linthurber_getval(double i, double j, double k, int prop,
   }
 
   /* Trilinear interpolation from UCVM/src/ucvm/ucvm_utils.c */
-  *val = interpolate_trilinear_1d(i-i0, j-j0, k-k0, p, q);
+  *val = interpolate_trilinear(i-i0, j-j0, k-k0, p, q);
 
-  return(UCVM_CODE_SUCCESS);
+  return(SUCCESS);
 }
 
 
@@ -309,7 +296,7 @@ double _get_rho(double f) {
  */
 int linthurber_finalize() {
 
-    if (linthurber_configuration) free(linthuber_configuration);
+    if (linthurber_configuration) free(linthurber_configuration);
 
     if (linthurber_velocity_model) {
       if (linthurber_velocity_model->vp_status == 2)
@@ -317,8 +304,8 @@ int linthurber_finalize() {
       if (linthurber_velocity_model->vs_status == 2)
           { free(linthurber_velocity_model->vs); }
       if (linthurber_velocity_model->dem_status == 2)
-          { free(linthurber_velocity_model->dem }
-      free(linthuber_velocity_model);
+          { free(linthurber_velocity_model->dem); }
+      free(linthurber_velocity_model);
     }
     return SUCCESS;
 }
@@ -440,7 +427,6 @@ int linthurber_read_configuration(char *file, linthurber_configuration_t *config
 }
 
 int _split4float(char *str, double *val, int cnt) {
-{
     // Declaration of delimiter
     const char s[4] = ",";
     char* tok;
@@ -469,14 +455,15 @@ void linthurber_print_error(char *err) {
 }
 
 /**
- * Check if the data is too big to be loaded internally (exceed maximum
+ * Check if the vp data is too big to be loaded internally (exceed maximum
  * allowable by a INT variable)
  *
  */
-static int too_big() {
-    long max_size= (long) (cs248_configuration->nx) * cs248_configuration->ny * cs248_configuration->nz;
+int _too_big_vp() {
+    long max_size= (long) (linthurber_configuration->vp_dims[0] *
+	                   linthurber_configuration->vp_dims[1] *
+	                   linthurber_configuration->vp_dims[2]);
     long delta= max_size - INT_MAX;
-
     if( delta > 0) {
         return 1;
         } else {
@@ -492,132 +479,129 @@ static int too_big() {
  * is not in memory, FAIL if no file found.
  */
 int linthurber_try_reading_model(linthurber_model_t *model) {
-  int i,k;
-  FILE *fp;
-  char filename[UCVM_MAX_PATH_LEN];
-  int num_read, retval;
-  float dep, x, y, val;
+    int i,j,k;
+    FILE *fp;
+    char filename[UCVM_MAX_PATH_LEN];
+    int num_read, retval;
+    float dep, x, y, val;
 
-  linthurber_configuration_t *config=linthurber_configuration;
+    linthurber_configuration_t *config=linthurber_configuration;
 
-  int vp_sz = (config->vp_dims[0] * config->vp_dims[1] * config->vp_dims[2]);
-  int vs_sz = (config->vs_dims[0] * config->vs_dims[1] * config->vs_dims[2]);
-  int dem_sz = (config->dem_dims[0] * config->dem_dims[1] * config->dem_dims[2]);
+    int vp_sz = (config->vp_dims[0] * config->vp_dims[1] * config->vp_dims[2]);
+    int vs_sz = (config->vs_dims[0] * config->vs_dims[1] * config->vs_dims[2]);
+    int dem_sz = (config->dem_dims[0] * config->dem_dims[1] * config->dem_dims[2]);
 
-  /* Allocate buffers */
-  model->vp = malloc(vp_sz * sizeof(float));
-  model->vs = malloc(vs_sz * sizeof(float));
-  model->dem = malloc(dem_sz * sizeof(float));
+    /* Allocate buffers */
+    model->vp = malloc(vp_sz * sizeof(float));
+    model->vs = malloc(vs_sz * sizeof(float));
+    model->dem = malloc(dem_sz * sizeof(float));
 
-  if ((model->vp == NULL) || (model->vs == NULL) || (model->dem == NULL)) {
-    fprintf(stderr, "Failed to allocate buffers Lin-Thurber model\n");
-    return(UCVM_CODE_ERROR);
-  }
-
-  /* initialize them to -1 */
-  for (i = 0; i < vp_sz; i++) { model->vp[i] = -1.0; }
-  for (i = 0; i < vs_sz; i++) { model->vs[i] = -1.0; }
-  for (i = 0; i < dem_sz; i++) { model->dem[i] = 0.0; }
-
-  /* Load Vp velocity file*/
-  sprintf(filename, "%s/lin-thurber.vp", linthurber_data_directory);
-  num_read = 0;
-  fp = fopen(filename, "r");
-  while (!feof(fp)) {
-    retval = fscanf(fp, "%*f %*f %f %f %f %f %*f", &dep, &y, &x, &val);
-    if (retval != EOF) {
-      if (retval != 4) {
-     fprintf(stderr, 
-          "Failed to read Lin-Thurber Vp file, line %d (parsed %d)\n",
-          num_read, retval);
-     return(UCVM_CODE_ERROR);
-      }
-      for (k = 0; k < config->num_z; k++) {
-     if (config->depths_msl[k] >= dep) {
-       break;
-     }
-      }
-      /* Flip x and y axis */
-      j = round((y + (-config->vp_origin[0])) 
-          * 1000.0 / config->vp_spacing);
-      i = round((config->proj_dims[0]/1000.0 - 
-           (x + (-config->vp_origin[1]))) 
-          * 1000.0 / connfig->vp_spacing);
-      if ((i < 0) || (j < 0) || (k < 0) || 
-       (i >= config->vp_dims[0]) || 
-       (j >= config->vp_dims[1]) || 
-       (k >= config->vp_dims[2])) {
-     fprintf(stderr, "Invalid index %d,%d,%d calculated\n", i, j, k);
-     return(UCVM_CODE_ERROR);
-      }
-      //printf("x,y,z: %d, %d, %d\n", i, j, k);
-      model->vp[k*config->vp_dims[0]*config->vp_dims[1] + 
-          j*config->vp_dims[0] + i] = val * 1000.0;
-      num_read++;
+    if ((model->vp == NULL) || (model->vs == NULL) || (model->dem == NULL)) {
+        fprintf(stderr, "Failed to allocate buffers Lin-Thurber model\n");
+        return(FAIL);
     }
-  }
-  fclose(fp);
 
-  /* Load Vs velocity file */
-  sprintf(filename, "%s/lin-thurber.vs", linthurber_data_directory);
-  num_read = 0;
-  fp = fopen(filename, "r");
-  while (!feof(fp)) {
-    retval = fscanf(fp, "%*f %*f %f %f %f %f %*f", &dep, &y, &x, &val);
-    if (retval != EOF) {
-      if (retval != 4) {
-     fprintf(stderr, 
-          "Failed to read Lin-Thurber Vs file, line %d (parsed %d)\n",
-          num_read, retval);
-     return(UCVM_CODE_ERROR);
-      }
-      for (k = 0; k < config->num_z; k++) {
-     if (config->depths_msl[k] >= dep) {
-       break;
-     }
-      }
-      /* Flip x and y axis */
-      j = round((y + (-config->vs_origin[0])) 
-          * 1000.0 / config->vs_spacing);
-      i = round((config->proj_dims[0]/1000.0 - 
-           (x + (-config->vs_origin[1]))) 
-          * 1000.0 / config->vs_spacing);
-      if ((i < 0) || (j < 0) || (k < 0) || 
-       (i >= config->vs_dims[0]) || 
-       (j >= config->vs_dims[1]) || 
-       (k >= config->vs_dims[2])) {
-     fprintf(stderr, "Invalid index %d,%d,%d calculated\n", i, j, k);
-     return(UCVM_CODE_ERROR);
-      }
-      //printf("x,y,z: %d, %d, %d\n", i, j, k);
-      vs_buf[k*config->vs_dims[0]*config->vs_dims[1] + 
-          j*config->vs_dims[0] + i] = val * 1000.0;
-      num_read++;
+    /* initialize them to -1 */
+    for (i = 0; i < vp_sz; i++) { model->vp[i] = -1.0; }
+    for (i = 0; i < vs_sz; i++) { model->vs[i] = -1.0; }
+    for (i = 0; i < dem_sz; i++) { model->dem[i] = 0.0; }
+
+    /* Load Vp velocity file*/
+    sprintf(filename, "%s/lin-thurber.vp", linthurber_data_directory);
+    num_read = 0;
+    fp = fopen(filename, "r");
+    while (!feof(fp)) {
+        retval = fscanf(fp, "%*f %*f %f %f %f %f %*f", &dep, &y, &x, &val);
+        if (retval != EOF) {
+            if (retval != 4) {
+                fprintf(stderr, 
+                    "Failed to read Lin-Thurber Vp file, line %d (parsed %d)\n",
+                    num_read, retval);
+                return(FAIL);
+            }
+            for (k = 0; k < config->num_z; k++) {
+                if (config->depths_msl[k] >= dep) { break; }
+            }
+            /* Flip x and y axis */
+            j = round((y + (-config->vp_origin[0])) 
+                         * 1000.0 / config->spacing_vp);
+            i = round((config->proj_dims[0]/1000.0 - 
+                         (x + (-config->vp_origin[1]))) 
+                         * 1000.0 / config->spacing_vp);
+            if ((i < 0) || (j < 0) || (k < 0) || 
+                               (i >= config->vp_dims[0]) || 
+                               (j >= config->vp_dims[1]) || 
+                               (k >= config->vp_dims[2])) {
+              fprintf(stderr, "Invalid index %d,%d,%d calculated\n", i, j, k);
+              return(FAIL);
+            }
+            //printf("x,y,z: %d, %d, %d\n", i, j, k);
+            model->vp[k*config->vp_dims[0]*config->vp_dims[1] + 
+                                    j*config->vp_dims[0] + i] = val * 1000.0;
+            num_read++;
+        }
     }
-  }
-  fclose(fp);
+    fclose(fp);
 
-  /* Load DEM file */
-  sprintf(filename, "%s/lin-thurber.dem", linthurber_data_directory);
-  fp = fopen(filename, "r");
-  num_read = fread(model->dem, sizeof(float), dem_sz, fp);
-  if (num_read != dem_sz) {
-    fprintf(stderr, "Failed to read Lin-Thurber DEM file\n");
-    return(UCVM_CODE_ERROR);
-  }
-
-  /* Swap endian from LSB to MSB */
-  if (system_endian() == UCVM_BYTEORDER_MSB) {
-    for (i = 0; i < dem_sz; i++) {
-      model->dem[i] = swap_endian_float(model->dem[i]);
+    /* Load Vs velocity file */
+    sprintf(filename, "%s/lin-thurber.vs", linthurber_data_directory);
+    num_read = 0;
+    fp = fopen(filename, "r");
+    while (!feof(fp)) {
+        retval = fscanf(fp, "%*f %*f %f %f %f %f %*f", &dep, &y, &x, &val);
+        if (retval != EOF) {
+            if (retval != 4) {
+                fprintf(stderr, 
+                    "Failed to read Lin-Thurber Vs file, line %d (parsed %d)\n",
+		    num_read, retval);
+                return(FAIL);
+            }
+            for (k = 0; k < config->num_z; k++) {
+                if (config->depths_msl[k] >= dep) { break; }
+            }
+            /* Flip x and y axis */
+            j = round((y + (-config->vs_origin[0])) 
+                              * 1000.0 / config->spacing_vs);
+            i = round((config->proj_dims[0]/1000.0 - 
+                              (x + (-config->vs_origin[1]))) 
+                              * 1000.0 / config->spacing_vs);
+            if ((i < 0) || (j < 0) || (k < 0) || 
+                     (i >= config->vs_dims[0]) || 
+                     (j >= config->vs_dims[1]) || 
+                     (k >= config->vs_dims[2])) {
+               fprintf(stderr, "Invalid index %d,%d,%d calculated\n", i, j, k);
+               return(FAIL);
+            }
+//printf("x,y,z: %d, %d, %d\n", i, j, k);
+            model->vs[k*config->vs_dims[0]*config->vs_dims[1] + 
+                             j*config->vs_dims[0] + i] = val * 1000.0;
+            num_read++;
+        }
     }
-  }
-  fclose(fp);
-  model->vp_status = 2;
-  model->vs_status = 2;
-  model->dem_status = 2;
+    fclose(fp);
 
-  return(UCVM_CODE_SUCCESS);
+    /* Load DEM file */
+    sprintf(filename, "%s/lin-thurber.dem", linthurber_data_directory);
+    fp = fopen(filename, "r");
+    num_read = fread(model->dem, sizeof(float), dem_sz, fp);
+    if (num_read != dem_sz) {
+        fprintf(stderr, "Failed to read Lin-Thurber DEM file\n");
+        return(FAIL);
+    }
+
+    /* Swap endian from LSB to MSB */
+    if (system_endian() == UCVM_BYTEORDER_MSB) {
+        for (i = 0; i < dem_sz; i++) {
+              model->dem[i] = swap_endian_float(model->dem[i]);
+        }
+    }
+    fclose(fp);
+
+    model->vp_status = 2;
+    model->vs_status = 2;
+    model->dem_status = 2;
+
+  return(SUCCESS);
 }
 
 // The following functions are for dynamic library mode. If we are compiling

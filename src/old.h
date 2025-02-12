@@ -69,17 +69,8 @@ typedef struct linthurber_configuration_t {
      double proj_yi[4];
      double proj_dims[2];
 
-     ucvm_bilinear_t proj;
-
-/* 
-{
-  double xi[4];
-  double yi[4];
-  double dims[2];
-} ucvm_bilinear_t;
-*/
-
      double depths_msl[LINTHURBER_MAX_Z_DIM];
+     double grid_origin[2];
 
      double vs_origin[2];
      double vp_origin[2];
@@ -131,5 +122,4 @@ int linthurber_try_reading_model(linthurber_model_t *model);
 int _linthurber_getval(double i, double j, double k, int prop, double *val);
 double _get_rho(double f);
 int _split4float(char *str, double *val, int cnt);
-int _dump_linthurber_configuration(linthurber_configuration_t *config);
-void _splitline(char* lptr, char key[], char value[]);
+

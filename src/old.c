@@ -19,9 +19,6 @@
 #include "linthurber.h"
 
 
-FILE  *stderrfp;
-int linthurber_ucvm_debug=1;
-
 /** The config of the model */
 char *linthurber_config_string=NULL;
 int linthurber_config_sz=0;
@@ -55,13 +52,6 @@ int linthurber_init(const char *dir, const char *label) {
     int tempVal = 0;
     char configbuf[512];
     double north_height_m = 0, east_width_m = 0, rotation_angle = 0;
-
-   fprintf(stderr,"HERE 1");
-
-    if(linthurber_ucvm_debug) {
-      stderrfp = fopen("linthurber_debug.log", "w+");
-      fprintf(stderrfp," -- configure setting -- \n");
-    }
 
     // Initialize variables.
     linthurber_configuration = calloc(1, sizeof(linthurber_configuration_t));
@@ -120,7 +110,7 @@ int linthurber_query(linthurber_point_t *points, linthurber_properties_t *data, 
     /* Query model */
     ucvm_point_t geo;      
     ucvm_point_t xy;
-
+    ucvm_bilinear_t linthurber_proj;
     for (p = 0; p < numpoints; p++) {
         geo.coord[0]= points[p].longitude;
         geo.coord[1]= points[p].latitude;
@@ -129,15 +119,7 @@ int linthurber_query(linthurber_point_t *points, linthurber_properties_t *data, 
         data[p].vs = -1.0;
         data[p].rho = -1.0;
 
-        if (ucvm_bilinear_geo2xy(&(config->proj), &geo, &xy) == 0) {
-
-          x=xy.coord[0];
-	  y=xy.coord[1];
-
-if(p < 10) {
-  fprintf(stderrfp,"XXXX query, geo, %f %f \n", geo.coord[0] , geo.coord[1]);
-  fprintf(stderrfp,"XX query, xy, %f %f \n", x, y);
-}
+        if (ucvm_bilinear_geo2xy(&linthurber_proj, &geo, &xy) == 0) {
 
           if (LINTHURBER_USE_DEM) {
 
@@ -314,10 +296,6 @@ double _get_rho(double f) {
  */
 int linthurber_finalize() {
 
-    if(linthurber_ucvm_debug) {
-      fclose(stderrfp);
-    }
-
     if (linthurber_configuration) free(linthurber_configuration);
 
     if (linthurber_velocity_model) {
@@ -392,7 +370,7 @@ int linthurber_read_configuration(char *file, linthurber_configuration_t *config
     // Read the lines in the linthurber_configuration file.
     while (fgets(line_holder, sizeof(line_holder), fp) != NULL) {
         if (line_holder[0] != '#' && line_holder[0] != ' ' && line_holder[0] != '\n') {
-            _splitline(line_holder, key, value);
+            sscanf(line_holder, "%s = %s", key, value);
 
             // Which variable are we editing?
             if (strcmp(key, "utm_zone") == 0) config->utm_zone = atoi(value);
@@ -405,21 +383,23 @@ int linthurber_read_configuration(char *file, linthurber_configuration_t *config
             if (strcmp(key, "num_z") == 0) config->num_z = atoi(value);
 
             if (strcmp(key, "proj_xi") == 0) {
-              _split4float(value, config->proj.xi,4);
+              _split4float(value, config->proj_xi,4);
             }
             if (strcmp(key, "proj_yi") == 0) {
-              _split4float(value, config->proj.yi,4);
+              _split4float(value, config->proj_yi,4);
             }
             if (strcmp(key, "proj_dims") == 0) {
-              _split4float(value, config->proj.dims,2);
+              _split4float(value, config->proj_dims,2);
             }
             if (strcmp(key, "depths_msl") == 0) {
-              _split4float(value, config->depths_msl,config->num_z);
+              _split4float(value, config->depths_msl,LINTHURBER_MAX_Z_DIM);
             }
             if (strcmp(key, "grid_origin") == 0) {
+              _split4float(value, config->grid_origin,2);
+            }
+            if (strcmp(key, "vp_origin") == 0) {
               _split4float(value, config->vp_origin,2);
-	      config->vs_origin[0]=config->vp_origin[0];
-	      config->vs_origin[1]=config->vp_origin[1];
+              _split4float(value, config->vs_origin,2);
             }
 
             if (strcmp(key, "interpolation") == 0) { 
@@ -429,90 +409,28 @@ int linthurber_read_configuration(char *file, linthurber_configuration_t *config
         }
     }
     // calculated config setting
-    config->dem_dims[0] = (int)(config->proj.dims[0] / config->spacing_dem + 1);
-    config->dem_dims[1] = (int)(config->proj.dims[1] / config->spacing_dem + 1);
+    config->dem_dims[0] = config->proj_dims[0] / config->spacing_dem + 1;
+    config->dem_dims[1] = config->proj_dims[1] / config->spacing_dem + 1;
     config->dem_dims[2] = 1;
 
-    config->vp_dims[0] = (int) (config->proj.dims[0] / config->spacing_vp + 1);
-    config->vp_dims[1] = (int) (config->proj.dims[1] / config->spacing_vp + 1);
-    config->vp_dims[2] = (int) (config->num_z);
+    config->vp_dims[0] = config->proj_dims[0] / config->spacing_vp + 1;
+    config->vp_dims[1] = config->proj_dims[1] / config->spacing_vp + 1;
+    config->vp_dims[2] = config->num_z;
 
-    config->vs_dims[0] = (int) (config->proj.dims[0] / config->spacing_vs + 1);
-    config->vs_dims[1] = (int) (config->proj.dims[1] / config->spacing_vs + 1);
-    config->vs_dims[2] = (int) (config->num_z);
+    config->vs_dims[0] = config->proj_dims[0] / config->spacing_vs + 1;
+    config->vs_dims[1] = config->proj_dims[1] / config->spacing_vs + 1;
+    config->vs_dims[2] = config->num_z;
+
 
     fclose(fp);
-    if(linthurber_ucvm_debug) {
-        _dump_linthurber_configuration(config);
-    }
     return SUCCESS;
-}
-
-void _trimLast(char *str, char m) {
-  int i;
-  i = strlen(str);
-  while (str[i-1] == m) {
-    str[i-1] = '\0';
-    i = i - 1;
-  }
-  return;
-}
-
-void _splitline(char* lptr, char key[], char value[]) {
-
-  char *kptr, *vptr;
-
-  for(int i=0; i<strlen(key); i++) { key[i]='\0'; }
-
-  _trimLast(lptr,'\n');
-  vptr = strchr(lptr, '=');
-  int pos=vptr - lptr;
-
-// skip space in key token from the back
-  while ( lptr[pos-1]  == ' ') {
-    pos--;
-  }
-
-  strncpy(key,lptr, pos);
-  key[pos] = '\0';
-
-  vptr++;
-  while( vptr[0] == ' ' ) {
-    vptr++;
-  }
-  strcpy(value,vptr);
-  _trimLast(value,' ');
-}
-
-int _dump_linthurber_configuration(linthurber_configuration_t *config) {
-
-    fprintf(stderrfp,"    zone : %d\n", config->utm_zone);
-    fprintf(stderrfp,"    model dir : %s\n", config->model_dir);
-    fprintf(stderrfp,"    spacing_vp : %f\n", config->spacing_vp);
-    fprintf(stderrfp,"    spacing_vs : %f\n", config->spacing_vs);
-    fprintf(stderrfp,"    spacing_dem : %f\n", config->spacing_dem);
-    fprintf(stderrfp,"    num_z: %d\n", config->num_z);
-    fprintf(stderrfp,"    proj_xi : %f %f %f %f\n",config->proj.xi[0],config->proj.xi[1],config->proj.xi[2], config->proj.xi[3]);
-    fprintf(stderrfp,"    proj_yi : %f %f %f %f\n",config->proj.yi[0],config->proj.yi[1],config->proj.yi[2], config->proj.yi[3]);
-    fprintf(stderrfp,"    proj_dims : %f %f\n",config->proj.dims[0],config->proj.dims[1]);
-    fprintf(stderrfp,"    vp_origin : %f %f\n",config->vp_origin[0],config->vp_origin[1]);
-    fprintf(stderrfp,"    vs_origin : %f %f\n",config->vs_origin[0],config->vs_origin[1]);
-    fprintf(stderrfp,"    interpolation : %d\n",config->interpolation);
-
-    for(int i=0; i< config->num_z; i++) {
-       fprintf(stderrfp,"       depths_msl <%d> (%f)\n",i,config->depths_msl[i]);
-    }
-
-    fprintf(stderrfp,"    dem_dims : %d %d %d\n",config->dem_dims[0],config->dem_dims[1],config->dem_dims[2]);
-    fprintf(stderrfp,"    vp_dims : %d %d %d\n",config->vp_dims[0],config->vp_dims[1],config->vp_dims[2]);
-    fprintf(stderrfp,"    vs_dims : %d %d %d\n",config->vs_dims[0],config->vs_dims[1],config->vs_dims[2]);
 }
 
 int _split4float(char *str, double *val, int cnt) {
     // Declaration of delimiter
     const char s[4] = ",";
     char* tok;
-
+ 
     tok = strtok(str, s);
  
     // Checks for delimiter
@@ -589,7 +507,6 @@ int linthurber_try_reading_model(linthurber_model_t *model) {
     for (i = 0; i < dem_sz; i++) { model->dem[i] = 0.0; }
 
     /* Load Vp velocity file*/
-    /* Load Vp velocity file*/
     sprintf(filename, "%s/lin-thurber.vp", linthurber_data_directory);
     num_read = 0;
     fp = fopen(filename, "r");
@@ -605,20 +522,20 @@ int linthurber_try_reading_model(linthurber_model_t *model) {
             for (k = 0; k < config->num_z; k++) {
                 if (config->depths_msl[k] >= dep) { break; }
             }
-
             /* Flip x and y axis */
             j = round((y + (-config->vp_origin[0])) 
                          * 1000.0 / config->spacing_vp);
-            i = round((config->proj.dims[0]/1000.0 - 
+            i = round((config->proj_dims[0]/1000.0 - 
                          (x + (-config->vp_origin[1]))) 
                          * 1000.0 / config->spacing_vp);
             if ((i < 0) || (j < 0) || (k < 0) || 
                                (i >= config->vp_dims[0]) || 
                                (j >= config->vp_dims[1]) || 
                                (k >= config->vp_dims[2])) {
-              fprintf(stderr, "1)Invalid index %d,%d,%d calculated\n", i, j, k);
+              fprintf(stderr, "Invalid index %d,%d,%d calculated\n", i, j, k);
               return(FAIL);
             }
+            //printf("x,y,z: %d, %d, %d\n", i, j, k);
             model->vp[k*config->vp_dims[0]*config->vp_dims[1] + 
                                     j*config->vp_dims[0] + i] = val * 1000.0;
             num_read++;
@@ -645,16 +562,17 @@ int linthurber_try_reading_model(linthurber_model_t *model) {
             /* Flip x and y axis */
             j = round((y + (-config->vs_origin[0])) 
                               * 1000.0 / config->spacing_vs);
-            i = round((config->proj.dims[0]/1000.0 - 
+            i = round((config->proj_dims[0]/1000.0 - 
                               (x + (-config->vs_origin[1]))) 
                               * 1000.0 / config->spacing_vs);
             if ((i < 0) || (j < 0) || (k < 0) || 
                      (i >= config->vs_dims[0]) || 
                      (j >= config->vs_dims[1]) || 
                      (k >= config->vs_dims[2])) {
-               fprintf(stderr, "2)Invalid index %d,%d,%d calculated\n", i, j, k);
+               fprintf(stderr, "Invalid index %d,%d,%d calculated\n", i, j, k);
                return(FAIL);
             }
+//printf("x,y,z: %d, %d, %d\n", i, j, k);
             model->vs[k*config->vs_dims[0]*config->vs_dims[1] + 
                              j*config->vs_dims[0] + i] = val * 1000.0;
             num_read++;
@@ -672,14 +590,12 @@ int linthurber_try_reading_model(linthurber_model_t *model) {
     }
 
     /* Swap endian from LSB to MSB */
-/** XXX ???
     if (system_endian() == UCVM_BYTEORDER_MSB) {
         for (i = 0; i < dem_sz; i++) {
               model->dem[i] = swap_endian_float(model->dem[i]);
         }
     }
     fclose(fp);
-**/
 
     model->vp_status = 2;
     model->vs_status = 2;
@@ -688,6 +604,7 @@ int linthurber_try_reading_model(linthurber_model_t *model) {
   return(SUCCESS);
 }
 
+// The following functions are for dynamic library mode. If we are compiling
 // a static library, these functions must be disabled to avoid conflicts.
 #ifdef DYNAMIC_LIBRARY
 
